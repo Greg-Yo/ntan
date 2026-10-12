@@ -37,7 +37,7 @@ Ntan est un mini-ERP de gestion d'une PME. C'est un **projet d'apprentissage et 
 
 ### Exclu de la V1 (YAGNI)
 
-Commandes clients et bons de livraison, achats / commandes fournisseurs, avoirs, paiements partiels, multi-devises, catégories de produits, multi-entrepôts, tarifs par client, application mobile, service de reporting dédié, circuit breaker, Spring Cloud Contract, Eureka, Config Server, Zipkin.
+Facturation électronique (réforme française 2026-2027 : format Factur-X, plateforme agréée, nouvelles mentions obligatoires) — les factures PDF de Ntan sont des factures « papier » au sens légal ; commandes clients et bons de livraison, achats / commandes fournisseurs, avoirs, paiements partiels, multi-devises, catégories de produits, multi-entrepôts, tarifs par client, application mobile, service de reporting dédié, circuit breaker, Spring Cloud Contract, Eureka, Config Server, Zipkin.
 
 ## 3. Architecture globale
 
@@ -61,10 +61,10 @@ Commandes clients et bons de livraison, achats / commandes fournisseurs, avoirs,
 
 ### 3.1 Stack technique
 
-Versions exactes figées lors de l'écriture du plan J0 (dernières versions stables à cette date).
+Versions exactes figées lors de l'écriture du plan J0 (dernières versions stables à cette date, compatibilité Spring Boot ↔ Spring Cloud ↔ springdoc vérifiée).
 
-- **Backend :** Java 21 LTS, Spring Boot 3.x, Spring Web, Spring Data JPA, Spring Security (resource server OAuth2), Spring AMQP, Flyway, MapStruct, springdoc-openapi, Micrometer Tracing, Spring Boot Actuator.
-- **Gateway :** Spring Cloud Gateway.
+- **Backend :** Java 25 LTS, Spring Boot 4.x (la ligne 3.x n'est plus maintenue en open source), Spring Web, Spring Data JPA, Spring Security (resource server OAuth2), Spring AMQP, Flyway, MapStruct, springdoc-openapi, Micrometer Tracing, Spring Boot Actuator.
+- **Gateway :** Spring Cloud Gateway, variante réactive (WebFlux) — sa configuration de sécurité utilise donc `ServerHttpSecurity`, contrairement aux services (servlet).
 - **Identité :** Keycloak (realm `ntan`, versionné en JSON).
 - **Messagerie :** RabbitMQ.
 - **Base de données :** PostgreSQL (une instance, une base par service : `tiers`, `catalog`, `sales`).
@@ -72,6 +72,9 @@ Versions exactes figées lors de l'écriture du plan J0 (dernières versions sta
 - **PDF :** génération côté `sales-service` à partir d'un template HTML (bibliothèque choisie dans le plan J3).
 - **Tests :** JUnit 5, AssertJ, Testcontainers, WireMock, ArchUnit, spring-security-test, tests unitaires Angular, Playwright.
 - **Outillage :** Maven (POM parent), Docker Compose, GitHub Actions.
+- **Service du front en conteneur :** nginx sert le build Angular et relaie `/api/**` vers la gateway (même origine, pas de CORS). En développement, `ng serve` utilise un fichier de proxy équivalent.
+
+**Prérequis du poste de développement :** JDK 25, Node.js LTS, Docker Desktop (indispensable aussi pour Testcontainers), un IDE Java.
 
 ### 3.2 Organisation du dépôt (monorepo)
 
@@ -158,7 +161,7 @@ com.ntan.tiers/
 
 | Champ | Type | Règle |
 |---|---|---|
-| code | texte | Unique, généré : `CLI-0001` / `FOU-0001` selon le type principal |
+| code | texte | Unique, généré à la création et immuable : `FOU-0001` si type `FOURNISSEUR`, sinon `CLI-0001` |
 | type | enum | `CLIENT`, `FOURNISSEUR`, `LES_DEUX` |
 | raisonSociale | texte | Obligatoire |
 | siret | texte | Optionnel, 14 chiffres si présent |
@@ -189,7 +192,7 @@ Un tiers n'est jamais supprimé physiquement ; il est désactivé.
 | seuilAlerte | quantité | ≥ 0 |
 | actif | booléen | |
 
-**MouvementStock** (immuable) : produitId, type (`ENTREE`, `SORTIE`, `AJUSTEMENT`), quantite (> 0 ; pour `AJUSTEMENT`, valeur signée), motif, documentSource (ex. `FAC-2026-0012`, optionnel), date, auteur.
+**MouvementStock** (immuable) : produitId, type (`ENTREE`, `SORTIE`, `AJUSTEMENT`), quantite (`ENTREE`/`SORTIE` : > 0 ; `AJUSTEMENT` : écart signé, calculé à partir de la quantité réellement comptée saisie par le magasinier), motif, documentSource (ex. `FAC-2026-0012`, optionnel), date, auteur.
 
 **EvenementTraite** : eventId (clé primaire), dateTraitement — garantit l'idempotence de la consommation.
 
@@ -214,7 +217,9 @@ Un tiers n'est jamais supprimé physiquement ; il est désactivé.
 | statut | `BROUILLON → ENVOYE → ACCEPTE | REFUSE` |
 | lignes, totaux, ventilation TVA | |
 
-Statut **calculé** (non stocké) : *expiré* = `ENVOYE` et `dateValidite < aujourd'hui`. Un devis expiré ne peut pas être accepté.
+Statut **calculé** (non stocké) : *expiré* = `ENVOYE` et `dateValidite < aujourd'hui`. Un devis expiré ne peut pas être accepté. Un devis `BROUILLON` peut être supprimé.
+
+**Un devis n'est facturé qu'une fois** : contrainte d'unicité sur `facture.devisId`. Si le brouillon de facture issu d'un devis est supprimé, le devis redevient facturable.
 
 **Facture**
 
@@ -244,7 +249,7 @@ Une facture `VALIDEE` ou `PAYEE` est immuable et non supprimable. Un brouillon p
 
 **CompteurNumerotation** : (typeDocument, annee) → dernierNumero. Incrémenté sous verrou de ligne (`SELECT … FOR UPDATE`).
 
-**Outbox** : id, eventId, type, payload (JSON), dateCreation, datePublication (null tant que non publié).
+**Outbox** : id, eventId, type, payload (JSON), traceparent (contexte de trace de la requête d'origine), dateCreation, datePublication (null tant que non publié). Les lignes publiées depuis plus de 30 jours sont purgées par une tâche planifiée.
 
 ### 5.5 Règles de calcul (objet métier pur, testé exhaustivement)
 
@@ -277,6 +282,8 @@ Aucune table utilisateur dans les services.
 - La gateway valide le JWT et route `/api/tiers/**`, `/api/catalog/**`, `/api/sales/**`.
 - **Chaque service valide aussi le JWT et les rôles** (resource server). Un convertisseur lit `realm_access.roles`.
 - Appels inter-services : **relais du JWT utilisateur** (intercepteur du `RestClient`).
+- **Piège de l'émetteur (issuer) en Docker :** le navigateur obtient ses jetons via l'URL publique de Keycloak (`http://localhost:8180/realms/ntan`), alors que les conteneurs joignent Keycloak via `http://keycloak:8080`. Les services valident donc la claim `iss` contre l'URL **publique** (`issuer-uri` non utilisé pour la découverte) et récupèrent les clés via l'URL **interne** (`jwk-set-uri`). Keycloak est configuré avec un hostname public fixe.
+- L'appel `POST catalog /produits/disponibilite` est une lecture : il est autorisé à tout rôle ayant la lecture des produits.
 
 ### 6.2 Appels synchrones
 
@@ -301,7 +308,7 @@ Puis : `POST /devis/{id}/envoi` (numéro + date), `POST /devis/{id}/acceptation`
 2. `POST /factures/{id}/validation {confirmerStockInsuffisant}` — **une seule transaction** :
    - verrou et incrément du compteur `(FACTURE, année de la date du jour)` ;
    - `dateEmission = aujourd'hui`, `dateEcheance`, copie émetteur, `validePar`, statut `VALIDEE` ;
-   - insertion dans `outbox` de `FactureValidee{eventId, factureId, numero, validePar, lignes[{produitId, quantite}]}`.
+   - insertion dans `outbox` de `FactureValidee{eventId, factureId, numero, validePar, lignes[{produitId, quantite}]}`, avec le `traceparent` courant (le relais publie dans un autre thread : sans cela, la trace serait coupée).
 3. **Relais outbox** (`@Scheduled`, toutes les 2 s) : lit les lignes non publiées en `FOR UPDATE SKIP LOCKED`, publie sur l'exchange `ntan.sales` (clé `facture.validee`) avec **publisher confirms**, marque `datePublication` seulement après confirmation.
 4. **`catalog-service`** consomme la file `catalog.facture-validee` dans une transaction :
    - `eventId` déjà présent dans `EvenementTraite` → ignoré ;
@@ -338,8 +345,8 @@ Toutes les API renvoient des **Problem Details (RFC 9457)** : `{type, title, sta
 | Validation de champ | 400 |
 | Non authentifié / rôle insuffisant | 401 / 403 |
 | Ressource inexistante | 404 |
-| Conflit de version / transition d'état interdite | 409 |
-| Règle métier violée | 422 |
+| Conflit de version, ou action impossible depuis le statut actuel (ex. valider une facture déjà validée) | 409 |
+| Règle métier violée sur les données (ex. devis expiré, stock manuel négatif, facture sans ligne, tiers inactif) | 422 |
 | Service dépendant indisponible | 503 |
 
 ### 7.2 Comportement en cas de panne
@@ -397,7 +404,7 @@ Chaque jalon fait l'objet de son propre plan d'implémentation.
 
 | Jalon | Contenu | Critère de fin |
 |---|---|---|
-| **J0 Socle** | Monorepo, POM parent, Docker Compose (PostgreSQL, RabbitMQ, Keycloak + realm + 3 utilisateurs de test), gateway, coquille Angular avec connexion, CI | Connexion dans Angular ; un appel authentifié traverse la gateway |
+| **J0 Socle** | Monorepo, POM parent, Docker Compose (PostgreSQL, RabbitMQ, Keycloak + realm + 3 utilisateurs de test, gateway, front nginx), gateway, coquille Angular avec connexion, CI | Connexion dans Angular ; un appel authentifié traverse la gateway |
 | **J1 Tiers** | `tiers-service` + écrans | CRUD clients/contacts, droits par rôle testés |
 | **J2 Catalogue** | `catalog-service` hexagonal, mouvements manuels, alertes + écrans | Création de produit, entrée/sortie manuelle, alerte de seuil |
 | **J3 Devis** | `sales-service` : domaine, calculs, numérotation, paramètres entreprise, PDF devis + écrans | Devis créé, envoyé, accepté, PDF obtenu |
