@@ -27,8 +27,9 @@
 
 Dépôt GitHub : `origin`, branche principale `main`. Pour **chaque** tâche N (1 à 10) :
 
-1. Partir de `main` à jour : `git checkout main && git pull`.
-2. Créer la branche de la tâche : `git checkout -b j0/tache-NN-<sujet>` (noms exacts dans l'en-tête de chaque tâche).
+1. Mettre `main` à jour : `git checkout main && git pull`.
+2. Passer sur la branche de la tâche (créée d'avance sur GitHub, nom exact dans l'en-tête de chaque tâche) et l'aligner sur `main` :
+   `git checkout j0/tache-NN-<sujet> && git pull && git merge --ff-only main`
 3. Réaliser les étapes ; les commits indiqués dans la tâche se font sur cette branche.
 4. Pousser et ouvrir une pull request vers `main` :
    `git push -u origin HEAD && gh pr create --base main --fill`
