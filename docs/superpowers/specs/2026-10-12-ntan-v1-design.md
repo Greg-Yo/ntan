@@ -1,7 +1,7 @@
 # Ntan — Spécification de conception V1
 
 - **Date :** 2026-10-12
-- **Statut :** en revue
+- **Statut :** validée
 - **Périmètre :** V1 (backend microservices + application web). Application mobile hors périmètre (V2).
 
 ---
@@ -224,7 +224,7 @@ Un tiers n'est jamais supprimé physiquement ; il est désactivé.
 
 **ParametresEntreprise** (ligne unique, modifiable par ADMIN) : raisonSociale, formeJuridique (SARL, SA, SAS, SNC, ETS…), capital, **niu (obligatoire)**, **rccm**, regimeFiscal (texte), centreImpots (centre de rattachement), assujettiTVA, mentionNonAssujetti (texte affiché si non assujetti), adresse (format camerounais), email, telephone, banque, rib (RIB CEMAC), numerosMobileMoney (MTN, Orange), mentionsPiedDePage (texte libre : conditions de paiement, pénalités…).
 
-**TauxTVA** (table de référence, modifiable par ADMIN) : regime (`NORMAL`, `TAUX_ZERO`, `EXONERE`), taux (19,25 / 0 / 0), libelle affiché, dateEffet. Le taux en vigueur à la date du document est copié dans chaque ligne.
+**TauxTVA** (table de référence, modifiable par ADMIN) : regime (`NORMAL`, `TAUX_ZERO`, `EXONERE`), taux (19,25 / 0 / 0), libelle affiché, dateEffet. Le taux appliqué est celui **en vigueur à la date d'émission** du document : il est déterminé à chaque enregistrement du brouillon, puis **re-déterminé à l'envoi (devis) ou à la validation (facture)**, la date d'émission étant fixée à ce moment-là. Cette table appartenant à `sales-service`, ce recalcul n'appelle aucun autre service.
 
 **Devis**
 
@@ -286,8 +286,8 @@ Si l'entreprise n'est **pas assujettie** à la TVA (`assujettiTVA = false`), tou
 ### 5.6 Rafraîchissement des copies figées
 
 - **Brouillon** (devis ou facture) : copies client et produits rafraîchies à chaque enregistrement.
-- **Facture issue d'un devis** : prix et lignes du devis conservés (valeur contractuelle) ; copie client rafraîchie à chaque enregistrement du brouillon.
-- **Validation / envoi** : aucune copie n'est rafraîchie ; la validation n'appelle aucun autre service.
+- **Facture issue d'un devis** : prix HT, remises et lignes du devis conservés (valeur contractuelle) ; le **taux de TVA**, lui, est celui en vigueur à la date de la facture (obligation fiscale) ; copie client rafraîchie à chaque enregistrement du brouillon.
+- **Validation / envoi** : aucune copie client ou produit n'est rafraîchie ; seuls les taux de TVA (table locale) et les totaux sont recalculés ; la validation n'appelle aucun autre service.
 
 ### 5.7 Utilisateurs et rôles (Keycloak)
 
