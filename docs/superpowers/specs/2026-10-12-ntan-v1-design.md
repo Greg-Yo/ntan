@@ -21,7 +21,25 @@ Ntan est un mini-ERP de gestion d'une PME. C'est un **projet d'apprentissage et 
 
 - Une seule entreprise par installation (pas de multi-société / multi-tenant).
 - Le développeur connaît les bases de Java et d'Angular.
-- Contexte français : TVA à 20 / 10 / 5,5 / 2,1 %, mentions légales de facture françaises.
+- **Contexte camerounais** (voir §1.1) : espace OHADA, monnaie **franc CFA (XAF)**, TVA camerounaise, identifiants NIU / RCCM, paiements Mobile Money, fuseau `Africa/Douala`.
+- Interface en **français** en V1 ; le front est structuré pour l'internationalisation, l'anglais (pays bilingue) arrive en V2.
+
+### 1.1 Adaptation au Cameroun
+
+| Sujet | Règle retenue |
+|---|---|
+| Monnaie | Franc CFA BEAC (**XAF**), affiché « FCFA ». **Pas de subdivision** : tous les montants sont des entiers, arrondis au franc. Format : `1 250 000 FCFA`. |
+| TVA | Taux normal **19,25 %** (17,5 % + centimes additionnels communaux de 10 % du principal) ; taux **0 %** (exportations) ; **exonéré** (opérations exonérées par le CGI). Taux stockés en table de référence, modifiables sans redéploiement si une loi de finances les change. |
+| Régime fiscal de l'entreprise | Paramètre `assujettiTVA`. Une entreprise non assujettie (ex. régime de l'impôt libératoire) émet des factures **sans TVA**, avec une mention paramétrable. |
+| Identifiants | **NIU** (Numéro d'Identifiant Unique, DGI) et **RCCM** (Registre du Commerce et du Crédit Mobilier, OHADA). Le NIU du fournisseur conditionne la déductibilité des charges du client : il est **obligatoire** dans les paramètres de l'entreprise. |
+| Adresses | Pas de code postal : quartier, ville, région, boîte postale (BP), pays (défaut `CM`). |
+| Téléphones | Format international `+237` suivi de 9 chiffres. |
+| Paiements | Espèces, **MTN Mobile Money**, **Orange Money**, virement, chèque. Référence de transaction saisie pour Mobile Money / virement. Pas d'intégration d'API de paiement en V1. |
+| Retenues à la source | Les grandes entreprises et l'administration retiennent parfois une partie du montant (précompte, TVA retenue). Le paiement enregistre un **montant retenu à la source** (défaut 0) : montant encaissé = TTC − retenue. Aucun calcul automatique de taux en V1. |
+| Dates | Format `jj/mm/aaaa`, fuseau `Africa/Douala`. |
+| Numérotation | Continue, chronologique, sans trou (bonne pratique et prérequis à la future facturation connectée). |
+
+**Facturation connectée à la DGI :** la loi de finances 2026 pose le principe de la transmission des données de facturation à l'administration fiscale via des dispositifs homologués (taxation en temps réel), en cours de déploiement. **Hors V1**, mais l'architecture le prépare : l'événement `FactureValidee` publié via l'outbox pourra alimenter un futur connecteur DGI sans toucher au domaine des ventes. Les obligations exactes (mentions, calendrier par catégorie de contribuable) devront être vérifiées dans le CGI en vigueur avant toute mise en production réelle.
 
 ## 2. Périmètre
 
@@ -37,7 +55,7 @@ Ntan est un mini-ERP de gestion d'une PME. C'est un **projet d'apprentissage et 
 
 ### Exclu de la V1 (YAGNI)
 
-Facturation électronique (réforme française 2026-2027 : format Factur-X, plateforme agréée, nouvelles mentions obligatoires) — les factures PDF de Ntan sont des factures « papier » au sens légal ; commandes clients et bons de livraison, achats / commandes fournisseurs, avoirs, paiements partiels, multi-devises, catégories de produits, multi-entrepôts, tarifs par client, application mobile, service de reporting dédié, circuit breaker, Spring Cloud Contract, Eureka, Config Server, Zipkin.
+Connecteur de facturation électronique DGI (voir §1.1), calcul automatique des retenues à la source, droits d'accises, comptabilité SYSCOHADA et déclarations fiscales, intégration des API Mobile Money, interface anglaise ; commandes clients et bons de livraison, achats / commandes fournisseurs, avoirs, paiements partiels, multi-devises, catégories de produits, multi-entrepôts, tarifs par client, application mobile, service de reporting dédié, circuit breaker, Spring Cloud Contract, Eureka, Config Server, Zipkin.
 
 ## 3. Architecture globale
 
@@ -153,7 +171,7 @@ com.ntan.tiers/
 - Identifiants : UUID.
 - Champs d'audit : `createdAt`, `createdBy` (issu du JWT), `updatedAt`, `updatedBy`.
 - `@Version` (verrouillage optimiste) sur les agrégats modifiables uniquement.
-- Montants : `NUMERIC(12,2)` / `BigDecimal`. Quantités : `NUMERIC(12,3)` / `BigDecimal`. Jamais de `double`.
+- Montants en FCFA : `NUMERIC(15,0)` / `BigDecimal` d'échelle 0, encapsulés dans un value object `Montant`. Quantités : `NUMERIC(12,3)` / `BigDecimal`. Taux : `NUMERIC(5,2)`. Jamais de `double`.
 
 ### 5.2 `tiers-service`
 
@@ -164,10 +182,10 @@ com.ntan.tiers/
 | code | texte | Unique, généré à la création et immuable : `FOU-0001` si type `FOURNISSEUR`, sinon `CLI-0001` |
 | type | enum | `CLIENT`, `FOURNISSEUR`, `LES_DEUX` |
 | raisonSociale | texte | Obligatoire |
-| siret | texte | Optionnel, 14 chiffres si présent |
-| numeroTvaIntra | texte | Optionnel |
-| email, telephone | texte | Optionnels, format validé |
-| adresse | embarqué | rue, codePostal, ville, pays (défaut `FR`) |
+| niu | texte | Optionnel (un particulier n'en a pas) ; alphanumérique, unique si présent |
+| rccm | texte | Optionnel (ex. `RC/DLA/2020/B/1234`) |
+| email, telephone | texte | Optionnels ; téléphone au format `+237XXXXXXXXX` |
+| adresse | embarqué | quartier, ville, région, boitePostale, pays (défaut `CM`) |
 | delaiPaiementJours | entier | Défaut 30, ≥ 0 |
 | actif | booléen | Désactivation au lieu de suppression |
 
@@ -185,8 +203,8 @@ Un tiers n'est jamais supprimé physiquement ; il est désactivé.
 | libelle | texte | Obligatoire |
 | description | texte | Optionnel |
 | unite | enum | `PIECE`, `KG`, `LITRE`, `METRE`, `HEURE`, `FORFAIT` |
-| prixVenteHT | montant | ≥ 0 |
-| tauxTVA | enum | `20`, `10`, `5.5`, `2.1` |
+| prixVenteHT | montant (FCFA entier) | ≥ 0 |
+| regimeTVA | enum | `NORMAL` (19,25 %), `TAUX_ZERO` (0 %, export), `EXONERE` |
 | suivreStock | booléen | Faux pour une prestation |
 | stockActuel | quantité | Dénormalisé, mis à jour dans la transaction de chaque mouvement |
 | seuilAlerte | quantité | ≥ 0 |
@@ -204,7 +222,9 @@ Un tiers n'est jamais supprimé physiquement ; il est désactivé.
 
 ### 5.4 `sales-service`
 
-**ParametresEntreprise** (ligne unique, modifiable par ADMIN) : raisonSociale, formeJuridique, capital, siret, numeroTvaIntra, rcs, adresse, email, telephone, iban, bic, mentionsLegales (texte : pénalités de retard, indemnité forfaitaire de 40 €, escompte).
+**ParametresEntreprise** (ligne unique, modifiable par ADMIN) : raisonSociale, formeJuridique (SARL, SA, SAS, SNC, ETS…), capital, **niu (obligatoire)**, **rccm**, regimeFiscal (texte), centreImpots (centre de rattachement), assujettiTVA, mentionNonAssujetti (texte affiché si non assujetti), adresse (format camerounais), email, telephone, banque, rib (RIB CEMAC), numerosMobileMoney (MTN, Orange), mentionsPiedDePage (texte libre : conditions de paiement, pénalités…).
+
+**TauxTVA** (table de référence, modifiable par ADMIN) : regime (`NORMAL`, `TAUX_ZERO`, `EXONERE`), taux (19,25 / 0 / 0), libelle affiché, dateEffet. Le taux en vigueur à la date du document est copié dans chaque ligne.
 
 **Devis**
 
@@ -231,7 +251,9 @@ Statut **calculé** (non stocké) : *expiré* = `ENVOYE` et `dateValidite < aujo
 | dateEmission | **Fixée au jour de la validation** |
 | dateEcheance | dateEmission + délai de paiement du client |
 | statut | `BROUILLON → VALIDEE → PAYEE` |
-| datePaiement, modePaiement | `VIREMENT`, `CHEQUE`, `ESPECES`, `CARTE` |
+| datePaiement, modePaiement | `ESPECES`, `MTN_MOMO`, `ORANGE_MONEY`, `VIREMENT`, `CHEQUE` |
+| referencePaiement | Obligatoire pour Mobile Money et virement (n° de transaction) |
+| montantRetenuSource | Défaut 0, ≤ totalTTC ; `montantEncaisse = totalTTC − montantRetenuSource` |
 | validePar | Utilisateur ayant validé |
 | lignes, totaux, ventilation TVA | |
 
@@ -239,11 +261,13 @@ Statut **calculé** : *en retard* = `VALIDEE` et `dateEcheance < aujourd'hui`.
 
 Une facture `VALIDEE` ou `PAYEE` est immuable et non supprimable. Un brouillon peut être supprimé.
 
-**Copie figée client** : raisonSociale, adresse, siret, numeroTvaIntra, delaiPaiementJours.
+**Copie figée client** : raisonSociale, adresse, niu, rccm, delaiPaiementJours.
 
-**LigneDocument** : ordre, produitId, copie produit (référence, libellé, unité, prixUnitaireHT, tauxTVA), quantite (> 0), remisePourcent (0–100), totalHT.
+**LigneDocument** : ordre, produitId, copie produit (référence, libellé, unité, prixUnitaireHT, regimeTVA, tauxTVA), quantite (> 0), remisePourcent (0–100), totalHT.
 
-**VentilationTVA** : taux, baseHT, montantTVA.
+**VentilationTVA** : regimeTVA, taux, baseHT, montantTVA (les bases exonérées et à taux zéro apparaissent avec un montant de TVA nul).
+
+Si l'entreprise n'est **pas assujettie** à la TVA (`assujettiTVA = false`), toutes les lignes sont calculées sans TVA et la `mentionNonAssujetti` figure sur le document.
 
 **Totaux** : totalHT, totalTVA, totalTTC.
 
@@ -253,10 +277,11 @@ Une facture `VALIDEE` ou `PAYEE` est immuable et non supprimable. Un brouillon p
 
 ### 5.5 Règles de calcul (objet métier pur, testé exhaustivement)
 
-1. `totalHT ligne = arrondi(quantite × prixUnitaireHT × (1 − remisePourcent/100), 2)`
-2. Pour chaque taux : `baseHT = Σ totalHT des lignes de ce taux` ; `montantTVA = arrondi(baseHT × taux/100, 2)`
+1. `totalHT ligne = arrondi(quantite × prixUnitaireHT × (1 − remisePourcent/100))`
+2. Pour chaque couple (régime, taux) : `baseHT = Σ totalHT des lignes` ; `montantTVA = arrondi(baseHT × taux/100)`
 3. `totalHT = Σ baseHT` ; `totalTVA = Σ montantTVA` ; `totalTTC = totalHT + totalTVA`
-4. Arrondi : `HALF_UP` à 2 décimales.
+4. Arrondi : `HALF_UP` **au franc** (échelle 0), le FCFA n'ayant pas de subdivision.
+5. Exemple de référence (test) : 3 × 10 000 FCFA à 19,25 % → HT 30 000, TVA 5 775, TTC 35 775.
 
 ### 5.6 Rafraîchissement des copies figées
 
@@ -317,7 +342,7 @@ Puis : `POST /devis/{id}/envoi` (numéro + date), `POST /devis/{id}/acceptation`
 
 ### 6.6 Flux D — Paiement, PDF, tableau de bord
 
-- `POST /factures/{id}/paiement {date, mode}` : uniquement depuis `VALIDEE`, `date ≥ dateEmission`.
+- `POST /factures/{id}/paiement {date, mode, reference, montantRetenuSource}` : uniquement depuis `VALIDEE`, `date ≥ dateEmission`, référence obligatoire pour Mobile Money et virement.
 - `GET /devis/{id}/pdf`, `GET /factures/{id}/pdf` : générés à la demande à partir des seules données figées (devis : uniquement s'il est numéroté ; facture : uniquement si validée).
 - Tableau de bord : Angular appelle
   - `GET /api/sales/statistiques` : CA HT mois et année (factures `VALIDEE` + `PAYEE`, par `dateEmission`), nombre et montant des factures en retard, nombre de devis envoyés non expirés ;
@@ -380,6 +405,8 @@ La procédure de rejeu de la DLQ (via l'interface d'administration RabbitMQ) est
 - **Droits :** gardes de route par rôle ; menu filtré selon le rôle.
 - **Formulaires :** Reactive Forms typés ; calcul des totaux affiché en direct à titre indicatif (le serveur fait foi).
 - **UI :** Angular Material, layout avec barre latérale.
+- **Localisation :** locale `fr-CM` (montants `1 250 000 FCFA`, dates `jj/mm/aaaa`) ; textes externalisés via l'i18n Angular pour l'ajout de l'anglais en V2.
+- **Sobriété réseau :** connexions mobiles parfois lentes ou coûteuses — listes paginées côté serveur, bundles chargés à la demande, pas de ressources lourdes inutiles.
 
 **Écrans V1 :** connexion ; tableau de bord ; tiers (liste filtrable, fiche avec contacts) ; produits (liste, fiche, historique des mouvements, saisie de mouvement) ; devis (liste, édition, actions envoyer/accepter/refuser/facturer, PDF) ; factures (liste avec filtre « en retard », édition, validation avec avertissement stock, paiement, PDF) ; paramètres entreprise.
 
@@ -387,7 +414,7 @@ La procédure de rejeu de la DLQ (via l'interface d'administration RabbitMQ) est
 
 | Niveau | Outil | Cible |
 |---|---|---|
-| Domaine | JUnit 5 (tests paramétrés) | Cycles de vie, calculs HT/TVA/arrondis, ventilation, règles de stock |
+| Domaine | JUnit 5 (tests paramétrés) | Cycles de vie, calculs HT/TVA/arrondis au franc, ventilation par régime, entreprise non assujettie, retenue à la source, règles de stock |
 | Architecture | ArchUnit | Règles de dépendance hexagonales |
 | Intégration | `@SpringBootTest` + Testcontainers | Repositories, Flyway, numérotation concurrente, relais outbox, consommateur (idempotence, DLQ) |
 | API | MockMvc + JWT simulé | Codes HTTP, Problem Details, droits par rôle |
@@ -409,7 +436,7 @@ Chaque jalon fait l'objet de son propre plan d'implémentation.
 | **J2 Catalogue** | `catalog-service` hexagonal, mouvements manuels, alertes + écrans | Création de produit, entrée/sortie manuelle, alerte de seuil |
 | **J3 Devis** | `sales-service` : domaine, calculs, numérotation, paramètres entreprise, PDF devis + écrans | Devis créé, envoyé, accepté, PDF obtenu |
 | **J4 Factures** | Conversion, validation, outbox, consommation catalog, paiement, PDF facture + écrans | Valider une facture diminue le stock ; pannes du §7.2 testées |
-| **J5 Finition** | Tableau de bord, données de démo (profil `demo`), E2E Playwright, README, ADRs, schémas | Démo complète lançable en une commande |
+| **J5 Finition** | Tableau de bord, données de démo camerounaises (profil `demo` : clients à Douala et Yaoundé, prix en FCFA), E2E Playwright, README, ADRs, schémas | Démo complète lançable en une commande |
 
 ## 11. Décisions à consigner en ADR
 
@@ -419,3 +446,4 @@ Chaque jalon fait l'objet de son propre plan d'implémentation.
 4. RabbitMQ + transactional outbox + consommateur idempotent.
 5. Copies figées dans les documents de vente.
 6. Retrait des commandes clients de la V1.
+7. Localisation camerounaise : FCFA sans décimale, taux de TVA en table de référence, régime non assujetti, retenue à la source saisie manuellement.
