@@ -1259,6 +1259,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+      # Premier démarrage mesuré à ~6 min sur le poste de dev (préparation Quarkus + schéma) :
+      # les échecs pendant cette période ne comptent pas.
+      start_period: 600s
 
   gateway:
     build:
@@ -1328,7 +1331,7 @@ chmod +x infra/smoke-test.sh
 docker compose -f infra/docker-compose.yml up -d --build
 docker compose -f infra/docker-compose.yml ps
 ```
-Expected : `postgres`, `rabbitmq`, `keycloak` en `healthy` ; `gateway` en `running` (le premier build Maven peut prendre plusieurs minutes).
+Expected : `postgres`, `rabbitmq`, `keycloak` en `healthy` ; `gateway` en `running`. Le premier démarrage de Keycloak prend environ 6 minutes sur le poste de dev, et le premier build Maven de la gateway plusieurs minutes : attendre avant de conclure à une panne.
 
 - [ ] **Step 7 : Vérifier les bases PostgreSQL**
 
