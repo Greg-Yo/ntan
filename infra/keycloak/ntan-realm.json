@@ -1,0 +1,74 @@
+{
+  "realm": "ntan",
+  "enabled": true,
+  "displayName": "Ntan",
+  "sslRequired": "external",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["fr", "en"],
+  "defaultLocale": "fr",
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "ADMIN", "description": "Administrateur : accès complet" },
+      { "name": "COMMERCIAL", "description": "Tiers, devis et factures" },
+      { "name": "MAGASINIER", "description": "Produits et stock" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "ntan-web",
+      "name": "Ntan - application web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": ["http://localhost:4200/*", "http://localhost:8000/*"],
+      "webOrigins": ["http://localhost:4200", "http://localhost:8000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4200/*##http://localhost:8000/*"
+      }
+    },
+    {
+      "clientId": "ntan-dev-cli",
+      "name": "Ntan - scripts de développement (mot de passe direct)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "admin.ntan",
+      "enabled": true,
+      "firstName": "Awa",
+      "lastName": "Admin",
+      "email": "admin@ntan.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "admin123", "temporary": false }],
+      "realmRoles": ["ADMIN"]
+    },
+    {
+      "username": "commercial.ntan",
+      "enabled": true,
+      "firstName": "Paul",
+      "lastName": "Commercial",
+      "email": "commercial@ntan.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "commercial123", "temporary": false }],
+      "realmRoles": ["COMMERCIAL"]
+    },
+    {
+      "username": "magasinier.ntan",
+      "enabled": true,
+      "firstName": "Brice",
+      "lastName": "Magasinier",
+      "email": "magasinier@ntan.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "magasinier123", "temporary": false }],
+      "realmRoles": ["MAGASINIER"]
+    }
+  ]
+}
