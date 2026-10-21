@@ -36,6 +36,7 @@ class RoutesConfigTest {
 
     private static final AtomicReference<String> cheminRecu = new AtomicReference<>();
     private static final AtomicReference<String> authorizationRecue = new AtomicReference<>();
+    private static final AtomicReference<String> requeteRecue = new AtomicReference<>();
     private static final HttpServer fauxServiceTiers = demarrerFauxService();
 
     private static HttpServer demarrerFauxService() {
@@ -43,6 +44,7 @@ class RoutesConfigTest {
             HttpServer serveur = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
             serveur.createContext("/", echange -> {
                 cheminRecu.set(echange.getRequestURI().getPath());
+                requeteRecue.set(echange.getRequestURI().getRawQuery());
                 authorizationRecue.set(echange.getRequestHeaders().getFirst("Authorization"));
                 byte[] corps = "ok".getBytes(StandardCharsets.UTF_8);
                 echange.sendResponseHeaders(200, corps.length);
@@ -93,6 +95,7 @@ class RoutesConfigTest {
         client = WebTestClient.bindToApplicationContext(context).configureClient().build();
         cheminRecu.set(null);
         authorizationRecue.set(null);
+        requeteRecue.set(null);
     }
 
     @Test
@@ -101,7 +104,7 @@ class RoutesConfigTest {
 
         assertThat(routes)
                 .extracting(Route::getId, r -> r.getUri().getPort())
-                .contains(
+                .containsExactlyInAnyOrder(
                         tuple("tiers", fauxServiceTiers.getAddress().getPort()),
                         tuple("catalog", 8082),
                         tuple("sales", 8083));
@@ -116,6 +119,27 @@ class RoutesConfigTest {
 
         assertThat(cheminRecu.get()).isEqualTo("/tiers/123");
         assertThat(authorizationRecue.get()).isEqualTo("Bearer jeton-test");
+    }
+
+    @Test
+    void relaieLaCollectionSansSegmentFinal() {
+        client.get().uri("/api/tiers")
+                .header("Authorization", "Bearer jeton-test")
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(cheminRecu.get()).isEqualTo("/tiers");
+    }
+
+    @Test
+    void conserveLesParametresDUrl() {
+        client.get().uri(java.net.URI.create("/api/tiers/123?page=2&recherche=Douala%20Sud"))
+                .header("Authorization", "Bearer jeton-test")
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(cheminRecu.get()).isEqualTo("/tiers/123");
+        assertThat(requeteRecue.get()).isEqualTo("page=2&recherche=Douala%20Sud");
     }
 
     @Test
