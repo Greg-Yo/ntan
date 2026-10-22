@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ntan
       POSTGRES_PASSWORD: ntan
     ports:
-      - "5432:5432"
+      - "${NTAN_POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -66,7 +66,7 @@ services:
       NTAN_ROUTES_CATALOG: http://catalog-service:8080
       NTAN_ROUTES_SALES: http://sales-service:8080
     ports:
-      - "8080:8080"
+      - "${NTAN_GATEWAY_PORT:-8080}:8080"
     depends_on:
       keycloak:
         condition: service_healthy

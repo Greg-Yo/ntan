@@ -3,7 +3,12 @@
 set -euo pipefail
 
 TOKEN_URL=http://localhost:8180/realms/ntan/protocol/openid-connect/token
-GATEWAY=${GATEWAY:-http://localhost:8080}
+# Port de la gateway : lu dans infra/.env s'il existe (le GATEWAY explicite reste prioritaire).
+ENV_FILE="$(dirname "${BASH_SOURCE[0]}")/.env"
+if [ -z "${GATEWAY:-}" ] && [ -f "$ENV_FILE" ]; then
+  NTAN_GATEWAY_PORT=$(sed -n 's/^NTAN_GATEWAY_PORT=//p' "$ENV_FILE" | tr -d '\r' | tail -1)
+fi
+GATEWAY=${GATEWAY:-http://localhost:${NTAN_GATEWAY_PORT:-8080}}
 
 ok()    { echo "OK     $1"; }
 echec() { echo "ECHEC  $1"; exit 1; }
