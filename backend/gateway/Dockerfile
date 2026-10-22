@@ -1,10 +1,10 @@
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /build
 # Certificats racine optionnels (poste derrière un proxy/antivirus qui inspecte le TLS) :
-# déposer des fichiers *.crt dans backend/certs/ (ignorés par Git). Sans fichier, rien ne change.
+# déposer des fichiers *.crt, *.cer ou *.pem dans backend/certs/ (ignorés par Git). Sans fichier, rien ne change.
 COPY certs/ /usr/local/share/ca-certificates/
 RUN set -e; \
-    for f in /usr/local/share/ca-certificates/*.crt; do \
+    for f in /usr/local/share/ca-certificates/*.crt /usr/local/share/ca-certificates/*.cer /usr/local/share/ca-certificates/*.pem; do \
       [ -e "$f" ] || continue; \
       keytool -importcert -noprompt -trustcacerts -cacerts \
         -storepass changeit -alias "$(basename "$f")" -file "$f"; \

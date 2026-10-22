@@ -15,4 +15,5 @@ Thumbs.db
 infra/.env
 
 # Certificats racine locaux (proxy/antivirus d inspection TLS), jamais versionnés
-backend/certs/*.crt
+backend/certs/*
+!backend/certs/.gitkeep

@@ -3,6 +3,7 @@ name: ntan
 services:
   postgres:
     image: postgres:18-alpine
+    restart: on-failure
     environment:
       POSTGRES_USER: ntan
       POSTGRES_PASSWORD: ntan
@@ -19,6 +20,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.2-management-alpine
+    restart: on-failure
     environment:
       RABBITMQ_DEFAULT_USER: ntan
       RABBITMQ_DEFAULT_PASS: ntan
@@ -28,8 +30,10 @@ services:
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
-      timeout: 5s
+      timeout: 30s
       retries: 20
+      start_period: 300s
+      start_interval: 5s
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.5
@@ -51,9 +55,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      # Premier démarrage mesuré à ~6 min sur le poste de dev (préparation Quarkus + schéma) :
-      # les échecs pendant cette période ne comptent pas.
-      start_period: 600s
+      # Démarrage à froid : jusqu'à ~30 min sur une machine lente (préparation Quarkus + schéma) ;
+      # les échecs pendant cette période ne comptent pas, et le test est répété toutes les 5 s.
+      start_period: 1800s
+      start_interval: 5s
 
   gateway:
     build:
