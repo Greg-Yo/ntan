@@ -13,3 +13,7 @@ Thumbs.db
 
 # Environnement local
 infra/.env
+
+# Certificats racine locaux (proxy/antivirus d inspection TLS), jamais versionnés
+backend/certs/*
+!backend/certs/.gitkeep
