@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ActivatedRouteSnapshot, provideRouter, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
-import { firstValueFrom, isObservable, Observable, of } from 'rxjs';
+import { firstValueFrom, isObservable, Observable, of, throwError } from 'rxjs';
 import { roleGuard } from './role.guard';
 import { CurrentUserService } from './current-user.service';
 import { CurrentUser } from './current-user';
@@ -40,5 +40,19 @@ describe('roleGuard', () => {
   it('charge l’utilisateur s’il ne l’est pas encore', async () => {
     configurer(null, of(magasinier));
     expect(await executer('MAGASINIER')).toBe(true);
+  });
+
+  it('redirige vers /accueil un utilisateur chargé sans le rôle requis', async () => {
+    configurer(null, of(magasinier));
+    const resultat = await executer('ADMIN');
+    expect(resultat).toBeInstanceOf(UrlTree);
+    expect(TestBed.inject(Router).serializeUrl(resultat as UrlTree)).toBe('/accueil');
+  });
+
+  it('redirige vers /accueil quand le chargement échoue', async () => {
+    configurer(null, throwError(() => new Error('401')));
+    const resultat = await executer('MAGASINIER');
+    expect(resultat).toBeInstanceOf(UrlTree);
+    expect(TestBed.inject(Router).serializeUrl(resultat as UrlTree)).toBe('/accueil');
   });
 });
