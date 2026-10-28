@@ -29,4 +29,33 @@ describe('CurrentUserService', () => {
     expect(await resultat).toEqual(admin);
     expect(service.currentUser()).toEqual(admin);
   });
+
+  it('partage une requête en cours entre appels simultanés', async () => {
+    const premier = firstValueFrom(service.load());
+    const second = firstValueFrom(service.load());
+    http.expectOne('/api/me').flush(admin);
+
+    expect(await premier).toEqual(admin);
+    expect(await second).toEqual(admin);
+  });
+
+  it('émet une nouvelle requête après une erreur', async () => {
+    const echec = firstValueFrom(service.load());
+    http.expectOne('/api/me').flush('erreur', { status: 500, statusText: 'Server Error' });
+    await expect(echec).rejects.toBeDefined();
+
+    const reprise = firstValueFrom(service.load());
+    http.expectOne('/api/me').flush(admin);
+    expect(await reprise).toEqual(admin);
+  });
+
+  it('émet une nouvelle requête après un chargement réussi', async () => {
+    const un = firstValueFrom(service.load());
+    http.expectOne('/api/me').flush(admin);
+    await un;
+
+    const deux = firstValueFrom(service.load());
+    http.expectOne('/api/me').flush(admin);
+    await deux;
+  });
 });

@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
@@ -38,7 +38,11 @@ import { menuPourRoles } from './menu';
         </mat-nav-list>
       </mat-sidenav>
       <mat-sidenav-content class="contenu">
-        <router-outlet />
+        @if (erreur()) {
+          <p class="alerte" role="alert">Impossible de récupérer votre profil. Réessayez ou reconnectez-vous.</p>
+        } @else {
+          <router-outlet />
+        }
       </mat-sidenav-content>
     </mat-sidenav-container>
   `,
@@ -51,6 +55,7 @@ import { menuPourRoles } from './menu';
     .conteneur { flex: 1; }
     .menu { width: 220px; }
     .contenu { padding: 24px; }
+    .alerte { color: var(--mat-sys-error); }
   `,
 })
 export class Shell implements OnInit {
@@ -60,8 +65,10 @@ export class Shell implements OnInit {
   protected readonly utilisateur = this.currentUserService.currentUser;
   protected readonly menu = computed(() => menuPourRoles(this.utilisateur()?.roles ?? []));
 
+  protected readonly erreur = signal(false);
+
   ngOnInit(): void {
-    this.currentUserService.load().subscribe();
+    this.currentUserService.load().subscribe({ error: () => this.erreur.set(true) });
   }
 
   protected deconnecter(): void {
